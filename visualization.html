@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>P.O.P.S. 3D Pipeline Visualization</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+        }
+        
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        #info-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            border: 2px solid #4682B4;
+            box-shadow: 0 0 20px rgba(70, 130, 180, 0.5);
+            max-width: 300px;
+            z-index: 100;
+        }
+        
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            border: 2px solid #FFD700;
+            z-index: 100;
+        }
+        
+        button {
+            background: linear-gradient(45deg, #FFD700, #FFA500);
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 5px;
+            color: #000;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(255, 215, 0, 0.3);
+        }
+        
+        #progress-bar {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 300px;
+            height: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 2px solid #4682B4;
+            border-radius: 10px;
+            overflow: hidden;
+            z-index: 100;
+        }
+        
+        #progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4682B4, #00CED1);
+            width: 0%;
+            transition: width 2s ease-in-out;
+            border-radius: 8px;
+        }
+        
+        .stage-label {
+            position: absolute;
+            color: white;
+            font-weight: bold;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 5px 10px;
+            border-radius: 5px;
+            border: 1px solid #FFD700;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="info-panel">
+            <h3 style="margin-top: 0; color: #4682B4;">🏗️ P.O.P.S. Pipeline System</h3>
+            <p><strong>Interactive 3D User Request Flow</strong></p>
+            <p id="stage-info">Click "Start Flow" to begin the journey through the system architecture.</p>
+            <p style="font-size: 12px; color: #AAA;">Use mouse to orbit • Scroll to zoom</p>
+        </div>
+        
+        <div id="progress-bar">
+            <div id="progress-fill"></div>
+        </div>
+        
+        <div id="controls">
+            <button onclick="startFlow()">🚀 Start Flow</button>
+            <button onclick="resetFlow()">🔄 Reset</button>
+            <button onclick="toggleAutoRotate()">🔄 Auto Rotate</button>
+        </div>
+    </div>
+
+    <script>
+        // Scene setup
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.Fog(0x1e3c72, 50, 200);
+        
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setClearColor(0x1e3c72, 0);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.getElementById('container').appendChild(renderer.domElement);
+
+        // Lighting setup
+        const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+        scene.add(ambientLight);
+        
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(50, 50, 50);
+        directionalLight.castShadow = true;
+        directionalLight.shadow.mapSize.width = 2048;
+        directionalLight.shadow.mapSize.height = 2048;
+        scene.add(directionalLight);
+        
+        const pointLight = new THREE.PointLight(0x4682B4, 0.5);
+        pointLight.position.set(0, 20, 0);
+        scene.add(pointLight);
+
+        // Pipeline stages data
+        const stages = [
+            { name: "User Request", position: [-30, 0, 0], color: 0x4682B4, description: "User initiates request through interface" },
+            { name: "Client", position: [-15, 0, 0], color: 0x6A5ACD, description: "Client-side processing and validation" },
+            { name: "Agent/Worker", position: [0, 0, 0], color: 0x3CB371, description: "Background processing and task handling" },
+            { name: "Automation", position: [15, 0, 0], color: 0xFFD700, description: "Automated server-side operations" },
+            { name: "Scene", position: [30, 0, 0], color: 0xFF4500, description: "Final scene rendering and delivery" }
+        ];
+
+        // Create pipeline components
+        const pipelineGroup = new THREE.Group();
+        const stationGroups = [];
+        const dataPackets = [];
+        let currentStage = 0;
+        let isFlowActive = false;
+        let autoRotate = true;
+
+        // Create main pipeline tube
+        function createPipelineTube() {
+            const curve = new THREE.CatmullRomCurve3([
+                new THREE.Vector3(-35, -2, 0),
+                new THREE.Vector3(-30, 0, 0),
+                new THREE.Vector3(-15, 0, 0),
+                new THREE.Vector3(0, 0, 0),
+                new THREE.Vector3(15, 0, 0),
+                new THREE.Vector3(30, 0, 0),
+                new THREE.Vector3(35, 2, 0)
+            ]);
+
+            const tubeGeometry = new THREE.TubeGeometry(curve, 64, 1.5, 8, false);
+            const tubeMaterial = new THREE.MeshPhongMaterial({
+                color: 0x708090,
+                transparent: true,
+                opacity: 0.7,
+                shininess: 100
+            });
+            
+            const tube = new THREE.Mesh(tubeGeometry, tubeMaterial);
+            tube.receiveShadow = true;
+            return tube;
+        }
+
+        // Create station for each stage
+        function createStation(stage, index) {
+            const stationGroup = new THREE.Group();
+            
+            // Platform base
+            const baseGeometry = new THREE.CylinderGeometry(4, 4, 1, 16);
+            const baseMaterial = new THREE.MeshPhongMaterial({ 
+                color: stage.color,
+                shininess: 50
+            });
+            const base = new THREE.Mesh(baseGeometry, baseMaterial);
+            base.position.set(...stage.position);
+            base.position.y = -3;
+            base.castShadow = true;
+            base.receiveShadow = true;
+            stationGroup.add(base);
+
+            // Processing unit
+            const unitGeometry = new THREE.BoxGeometry(3, 4, 3);
+            const unitMaterial = new THREE.MeshPhongMaterial({ 
+                color: stage.color,
+                transparent: true,
+                opacity: 0.8
+            });
+            const unit = new THREE.Mesh(unitGeometry, unitMaterial);
+            unit.position.set(...stage.position);
+            unit.position.y = 1;
+            unit.castShadow = true;
+            stationGroup.add(unit);
+
+            // Status indicator
+            const indicatorGeometry = new THREE.SphereGeometry(0.5, 16, 16);
+            const indicatorMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0x333333,
+                transparent: true,
+                opacity: 0.5
+            });
+            const indicator = new THREE.Mesh(indicatorGeometry, indicatorMaterial);
+            indicator.position.set(...stage.position);
+            indicator.position.y = 4;
+            stationGroup.add(indicator);
+
+            // Connection pipes
+            if (index < stages.length - 1) {
+                const nextStage = stages[index + 1];
+                const pipeGeometry = new THREE.CylinderGeometry(0.5, 0.5, 
+                    Math.abs(nextStage.position[0] - stage.position[0]), 8);
+                const pipeMaterial = new THREE.MeshPhongMaterial({ 
+                    color: 0x808080,
+                    shininess: 100
+                });
+                const pipe = new THREE.Mesh(pipeGeometry, pipeMaterial);
+                pipe.position.set(
+                    (stage.position[0] + nextStage.position[0]) / 2,
+                    0,
+                    0
+                );
+                pipe.rotation.z = Math.PI / 2;
+                pipe.castShadow = true;
+                stationGroup.add(pipe);
+            }
+
+            stationGroups.push({ group: stationGroup, indicator, unit, stage });
+            return stationGroup;
+        }
+
+        // Create data packet
+        function createDataPacket() {
+            const packetGeometry = new THREE.SphereGeometry(0.8, 16, 16);
+            const packetMaterial = new THREE.MeshPhongMaterial({ 
+                color: 0x00CED1,
+                emissive: 0x006666,
+                shininess: 100
+            });
+            const packet = new THREE.Mesh(packetGeometry, packetMaterial);
+            packet.castShadow = true;
+            
+            // Add glow effect
+            const glowGeometry = new THREE.SphereGeometry(1.2, 16, 16);
+            const glowMaterial = new THREE.MeshBasicMaterial({
+                color: 0x00CED1,
+                transparent: true,
+                opacity: 0.3
+            });
+            const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+            packet.add(glow);
+            
+            return packet;
+        }
+
+        // Initialize scene
+        function initScene() {
+            // Add pipeline tube
+            const tube = createPipelineTube();
+            pipelineGroup.add(tube);
+
+            // Add stations
+            stages.forEach((stage, index) => {
+                const station = createStation(stage, index);
+                pipelineGroup.add(station);
+            });
+
+            scene.add(pipelineGroup);
+        }
+
+        // Animation functions
+        function startFlow() {
+            if (isFlowActive) return;
+            
+            isFlowActive = true;
+            currentStage = 0;
+            
+            // Create and animate data packet
+            const packet = createDataPacket();
+            packet.position.set(-35, 0, 0);
+            scene.add(packet);
+            dataPackets.push(packet);
+            
+            animatePacket(packet);
+            updateProgress();
+        }
+
+        function animatePacket(packet) {
+            const startTime = Date.now();
+            const duration = 2000; // 2 seconds per stage
+            
+            function animate() {
+                if (!isFlowActive || currentStage >= stages.length) {
+                    if (currentStage >= stages.length) {
+                        // Flow complete
+                        document.getElementById('stage-info').innerHTML = 
+                            '<strong style="color: #00CED1;">✅ Flow Complete!</strong><br>Request successfully processed through all stages.';
+                    }
+                    return;
+                }
+                
+                const elapsed = Date.now() - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                
+                // Update packet position
+                if (currentStage < stages.length - 1) {
+                    const currentPos = stages[currentStage].position;
+                    const nextPos = stages[currentStage + 1].position;
+                    
+                    packet.position.x = currentPos[0] + (nextPos[0] - currentPos[0]) * progress;
+                    packet.position.y = Math.sin(progress * Math.PI) * 2; // Arc motion
+                }
+                
+                // Activate current station
+                const currentStation = stationGroups[currentStage];
+                if (currentStation) {
+                    currentStation.indicator.material.color.setHex(0x00FF00);
+                    currentStation.indicator.material.opacity = 1;
+                    currentStation.unit.rotation.y += 0.1;
+                    
+                    // Update info panel
+                    document.getElementById('stage-info').innerHTML = 
+                        `<strong style="color: #FFD700;">${stages[currentStage].name}</strong><br>${stages[currentStage].description}`;
+                }
+                
+                if (progress < 1) {
+                    requestAnimationFrame(animate);
+                } else {
+                    currentStage++;
+                    if (currentStage < stages.length) {
+                        setTimeout(animate, 500); // Pause between stages
+                    } else {
+                        setTimeout(() => {
+                            scene.remove(packet);
+                            dataPackets.splice(dataPackets.indexOf(packet), 1);
+                        }, 1000);
+                    }
+                }
+            }
+            
+            animate();
+        }
+
+        function updateProgress() {
+            const progressBar = document.getElementById('progress-fill');
+            const progress = ((currentStage + 1) / stages.length) * 100;
+            progressBar.style.width = progress + '%';
+        }
+
+        function resetFlow() {
+            isFlowActive = false;
+            currentStage = 0;
+            
+            // Reset stations
+            stationGroups.forEach(station => {
+                station.indicator.material.color.setHex(0x333333);
+                station.indicator.material.opacity = 0.5;
+                station.unit.rotation.y = 0;
+            });
+            
+            // Remove data packets
+            dataPackets.forEach(packet => {
+                scene.remove(packet);
+            });
+            dataPackets.length = 0;
+            
+            // Reset UI
+            document.getElementById('progress-fill').style.width = '0%';
+            document.getElementById('stage-info').innerHTML = 
+                'Click "Start Flow" to begin the journey through the system architecture.';
+        }
+
+        function toggleAutoRotate() {
+            autoRotate = !autoRotate;
+        }
+
+        // Camera controls (basic orbit)
+        let mouseDown = false;
+        let mouseX = 0;
+        let mouseY = 0;
+        let cameraAngleX = 0;
+        let cameraAngleY = 0;
+        const cameraDistance = 60;
+
+        camera.position.set(0, 20, cameraDistance);
+        camera.lookAt(0, 0, 0);
+
+        renderer.domElement.addEventListener('mousedown', (event) => {
+            mouseDown = true;
+            mouseX = event.clientX;
+            mouseY = event.clientY;
+        });
+
+        renderer.domElement.addEventListener('mousemove', (event) => {
+            if (!mouseDown) return;
+            
+            const deltaX = event.clientX - mouseX;
+            const deltaY = event.clientY - mouseY;
+            
+            cameraAngleX -= deltaX * 0.01;
+            cameraAngleY += deltaY * 0.01;
+            cameraAngleY = Math.max(-Math.PI/3, Math.min(Math.PI/3, cameraAngleY));
+            
+            mouseX = event.clientX;
+            mouseY = event.clientY;
+        });
+
+        renderer.domElement.addEventListener('mouseup', () => {
+            mouseDown = false;
+        });
+
+        renderer.domElement.addEventListener('wheel', (event) => {
+            const scale = event.deltaY > 0 ? 1.1 : 0.9;
+            camera.position.multiplyScalar(scale);
+        });
+
+        // Animation loop
+        function renderLoop() {
+            requestAnimationFrame(renderLoop);
+            
+            // Update camera position
+            if (autoRotate && !mouseDown) {
+                cameraAngleX += 0.005;
+            }
+            
+            camera.position.x = Math.cos(cameraAngleX) * Math.cos(cameraAngleY) * cameraDistance;
+            camera.position.y = Math.sin(cameraAngleY) * cameraDistance + 10;
+            camera.position.z = Math.sin(cameraAngleX) * Math.cos(cameraAngleY) * cameraDistance;
+            camera.lookAt(0, 0, 0);
+            
+            // Animate pipeline glow
+            pointLight.intensity = 0.5 + Math.sin(Date.now() * 0.003) * 0.2;
+            
+            renderer.render(scene, camera);
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Initialize
+        initScene();
+        renderLoop();
+    </script>
+</body>
+</html>
