@@ -1,0 +1,1356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0a160b">
+    <title>P.O.P.S. Pipeline Interface - Multi-Flow Multi-Scene System</title>
+    <meta name="description" content="3D Pipeline system with multi-flow and multi-scene AppDrop management">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        :root {
+            --bg: radial-gradient(1200px 800px at 50% -10%, #1a1a1a 0%, #0e0e0e 40%, #0a0a0a 100%);
+            --accent: #00ff7f;
+            --accent-light: #33ff99;
+            --accent-dark: #00cc66;
+            --accent-glow: rgba(0, 255, 127, 0.3);
+            --glass: rgba(255, 255, 255, 0.08);
+            --safe-top: env(safe-area-inset-top, 0px);
+            --safe-bottom: env(safe-area-inset-bottom, 24px);
+            --safe-left: env(safe-area-inset-left, 0px);
+            --safe-right: env(safe-area-inset-right, 0px);
+        }
+
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        html, body {
+            height: 100dvh;
+            height: 100vh;
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: #fff;
+            overflow: hidden;
+            touch-action: manipulation;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .container {
+            position: relative;
+            width: 100vw;
+            height: 100dvh;
+            height: 100vh;
+            padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+        }
+
+        .status-bar {
+            position: absolute;
+            top: var(--safe-top);
+            left: var(--safe-left);
+            right: var(--safe-right);
+            height: 32px;
+            padding: 0 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: linear-gradient(135deg, rgba(0, 0, 0, 0.8), var(--accent-glow));
+            border-bottom: 1px solid var(--accent-glow);
+            backdrop-filter: blur(20px);
+            z-index: 1000;
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        .time {
+            color: var(--accent);
+            text-shadow: 0 0 10px var(--accent-glow);
+        }
+
+        .pipeline-status {
+            padding: 3px 8px;
+            border-radius: 12px;
+            border: 1px solid var(--accent);
+            background: linear-gradient(135deg, var(--accent-glow), rgba(255, 255, 255, 0.05));
+            color: var(--accent);
+            font-size: 10px;
+        }
+
+        .pipeline-container {
+            position: absolute;
+            top: 32px;
+            left: 0;
+            right: 0;
+            bottom: 80px;
+            background: transparent;
+        }
+
+        .scene-viewer {
+            position: absolute;
+            top: 40px;
+            right: 16px;
+            width: 320px;
+            height: 240px;
+            background: linear-gradient(135deg, rgba(0, 0, 0, 0.9), rgba(0, 50, 50, 0.9));
+            border: 2px solid var(--accent);
+            border-radius: 8px;
+            box-shadow: 0 0 15px var(--accent-glow), inset 0 0 5px rgba(0, 255, 127, 0.2);
+            backdrop-filter: blur(10px);
+            z-index: 500;
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+            resize: both;
+            min-width: 280px;
+            min-height: 200px;
+            max-width: 90vw;
+            max-height: 70vh;
+        }
+
+        .scene-viewer.active {
+            display: flex;
+            z-index: 510;
+        }
+
+        .scene-viewer.minimized {
+            display: none;
+        }
+
+        .scene-viewer.maximized {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            max-width: none;
+            max-height: none;
+            border: none;
+            border-radius: 0;
+            z-index: 2000;
+            resize: none;
+        }
+
+        .scene-header {
+            background: linear-gradient(135deg, var(--accent-glow), transparent);
+            padding: 8px 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            cursor: move;
+            min-height: 36px;
+        }
+
+        .scene-title {
+            color: var(--accent);
+            font-size: 14px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .scene-controls {
+            display: flex;
+            gap: 6px;
+        }
+
+        .scene-btn {
+            background: rgba(0, 0, 0, 0.6);
+            border: 1px solid var(--accent);
+            color: var(--accent);
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            transition: all 0.2s ease;
+            min-width: 24px;
+            min-height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .scene-btn:hover {
+            background: var(--accent);
+            color: #000;
+        }
+
+        .scene-content {
+            flex: 1;
+            position: relative;
+            background: #000;
+        }
+
+        .scene-content iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: #000;
+        }
+
+        .flow-menu {
+            position: absolute;
+            top: 40px;
+            left: 16px;
+            width: 300px;
+            max-height: 70vh;
+            background: rgba(0, 0, 0, 0.95);
+            border: 2px solid var(--accent);
+            border-radius: 12px;
+            backdrop-filter: blur(20px);
+            z-index: 600;
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .flow-menu.active {
+            display: flex;
+        }
+
+        .flow-header {
+            background: linear-gradient(135deg, var(--accent-glow), transparent);
+            padding: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .flow-title {
+            color: var(--accent);
+            font-size: 16px;
+            font-weight: 700;
+        }
+
+        .flow-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px;
+        }
+
+        .flow-stage {
+            margin-bottom: 16px;
+        }
+
+        .stage-label {
+            color: var(--accent);
+            font-size: 12px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            padding: 4px 0;
+            border-bottom: 1px solid var(--accent-glow);
+        }
+
+        .stage-apps {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .stage-app {
+            background: linear-gradient(135deg, var(--glass), var(--accent-glow));
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 8px;
+            padding: 6px 8px;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            min-height: 28px;
+        }
+
+        .stage-app:hover {
+            background: linear-gradient(135deg, var(--accent-glow), rgba(255, 255, 255, 0.1));
+            border-color: var(--accent);
+        }
+
+        .stage-app.selected {
+            background: linear-gradient(135deg, var(--accent), var(--accent-dark));
+            color: #000;
+            font-weight: 600;
+        }
+
+        .stage-app.flowing {
+            animation: flowPulse 1s ease-in-out infinite;
+        }
+
+        @keyframes flowPulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(1.05); }
+        }
+
+        .open-scenes {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid var(--accent-glow);
+        }
+
+        .open-scene {
+            background: linear-gradient(135deg, rgba(0, 255, 127, 0.1), rgba(0, 50, 50, 0.2));
+            border: 1px solid var(--accent);
+            border-radius: 8px;
+            padding: 8px;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .open-scene:hover {
+            background: linear-gradient(135deg, rgba(0, 255, 127, 0.2), rgba(0, 50, 50, 0.3));
+            transform: translateY(-1px);
+        }
+
+        .open-scene-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: 1;
+        }
+
+        .open-scene-controls {
+            display: flex;
+            gap: 4px;
+        }
+
+        .scene-control {
+            background: rgba(0, 0, 0, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            padding: 2px 6px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 10px;
+            min-width: 20px;
+            min-height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .scene-control.close {
+            border-color: #ff073a;
+            color: #ff073a;
+        }
+
+        .scene-control.focus {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .scene-control.minimize {
+            border-color: #ffd700;
+            color: #ffd700;
+        }
+
+        .dock {
+            position: absolute;
+            left: var(--safe-left);
+            right: var(--safe-right);
+            bottom: var(--safe-bottom);
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: space-around;
+            padding: 12px 16px;
+            background: linear-gradient(135deg, rgba(0, 0, 0, 0.85), var(--accent-glow));
+            backdrop-filter: blur(25px);
+            border-top: 1px solid var(--accent-glow);
+            z-index: 1000;
+            gap: 16px;
+        }
+
+        .dock-btn {
+            width: 56px;
+            height: 56px;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            cursor: pointer;
+            background: linear-gradient(135deg, var(--accent-light), var(--accent-dark));
+            box-shadow: 0 4px 12px var(--accent-glow);
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .dock-btn:hover, .dock-btn:active {
+            transform: translateY(-3px) scale(1.05);
+            box-shadow: 0 8px 20px var(--accent-glow);
+        }
+
+        .dock-btn.active {
+            background: linear-gradient(135deg, var(--accent), #ffffff);
+            color: #000;
+        }
+
+        .badge {
+            position: absolute;
+            top: -2px;
+            right: -2px;
+            background: #ff073a;
+            color: #fff;
+            font-size: 10px;
+            font-weight: 700;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+        }
+
+        .app-selector {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.95);
+            border: 2px solid var(--accent);
+            border-radius: 20px;
+            z-index: 1500;
+            backdrop-filter: blur(30px);
+            display: none;
+            flex-direction: column;
+            padding: 20px;
+            max-width: 90vw;
+            max-height: 80vh;
+        }
+
+        .app-selector.show {
+            display: flex;
+        }
+
+        .selector-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .selector-title {
+            color: var(--accent);
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .close-selector {
+            background: rgba(255, 7, 58, 0.8);
+            color: #fff;
+            border: none;
+            border-radius: 50%;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .selector-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 16px;
+            overflow-y: auto;
+            max-height: 60vh;
+        }
+
+        .selector-app {
+            background: linear-gradient(135deg, var(--glass), var(--accent-glow));
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 16px;
+            padding: 16px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .selector-app:hover {
+            background: linear-gradient(135deg, var(--accent-glow), rgba(255, 255, 255, 0.1));
+            border-color: var(--accent);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px var(--accent-glow);
+        }
+
+        .selector-app-icon {
+            font-size: 36px;
+            margin-bottom: 8px;
+        }
+
+        .selector-app-name {
+            font-size: 12px;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .search-bar {
+            margin-bottom: 20px;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid var(--accent);
+            background: rgba(0, 0, 0, 0.5);
+            color: #fff;
+            font-size: 14px;
+            width: 100%;
+        }
+
+        @media (max-width: 768px) {
+            .flow-menu {
+                width: 280px;
+            }
+            
+            .scene-viewer {
+                width: 280px;
+                height: 200px;
+            }
+            
+            .selector-grid {
+                grid-template-columns: repeat(3, 1fr);
+                gap: 12px;
+            }
+        }
+
+        @media (orientation: landscape) and (max-height: 600px) {
+            .flow-menu, .scene-viewer {
+                max-height: 60vh;
+            }
+            
+            .dock {
+                height: 60px;
+                padding: 8px 12px;
+            }
+            
+            .dock-btn {
+                width: 48px;
+                height: 48px;
+                font-size: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="status-bar">
+            <div class="time" id="time">11:04 PM</div>
+            <div class="pipeline-status" id="pipelineStatus">READY</div>
+        </div>
+
+        <div class="pipeline-container" id="pipelineContainer"></div>
+
+        <div class="flow-menu" id="flowMenu">
+            <div class="flow-header">
+                <div class="flow-title">🚀 Flow Control</div>
+                <button class="scene-btn" id="closeFlowMenu">✕</button>
+            </div>
+            <div class="flow-body">
+                <div class="flow-stage">
+                    <div class="stage-label">📋 User Request</div>
+                    <div class="stage-apps" id="userRequestApps"></div>
+                </div>
+                
+                <div class="flow-stage">
+                    <div class="stage-label">💻 Client</div>
+                    <div class="stage-apps" id="clientApps"></div>
+                </div>
+                
+                <div class="flow-stage">
+                    <div class="stage-label">⚙️ Agent/Worker</div>
+                    <div class="stage-apps" id="agentApps"></div>
+                </div>
+                
+                <div class="flow-stage">
+                    <div class="stage-label">🤖 Automation</div>
+                    <div class="stage-apps" id="automationApps"></div>
+                </div>
+                
+                <div class="flow-stage">
+                    <div class="stage-label">🎬 Scenes (Active)</div>
+                    <div class="stage-apps" id="sceneApps"></div>
+                </div>
+
+                <div class="open-scenes">
+                    <div class="stage-label">📺 Active Scenes</div>
+                    <div id="openScenesList"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="app-selector" id="appSelector">
+            <div class="selector-header">
+                <div class="selector-title">Select AppDrop to Launch</div>
+                <button class="close-selector" id="closeSelector">✕</button>
+            </div>
+            <input type="text" class="search-bar" id="searchBar" placeholder="Search AppDrops...">
+            <div class="selector-grid" id="selectorGrid"></div>
+        </div>
+
+        <div class="dock">
+            <div class="dock-btn" id="homeBtn" title="Pipeline Home">🏗️</div>
+            <div class="dock-btn" id="appsBtn" title="Launch AppDrop">📱</div>
+            <div class="dock-btn" id="flowBtn" title="Flow Control">🚀</div>
+            <div class="dock-btn" id="sceneBtn" title="Scene Viewer">
+                🎬
+                <span class="badge" id="sceneBadge" style="display: none;">0</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // AppDrops database
+        const APPDROPS = [
+            { id: 'atlas', name: 'Atlas', emoji: '🌍', path: 'https://charlesmack.github.io/OnePagerMiniOS/appdrops/atlas/index.html', description: 'Global mapping tool', category: 'Tools' },
+            { id: 'aurora', name: 'Aurora', emoji: '🌌', path: 'https://charlesmack.github.io/OnePagerMiniOS/appdrops/aurora/index.html', description: 'Visual effects suite', category: 'Media' },
+            { id: 'bryce', name: 'Bryce Holograms', emoji: '😇', path: 'https://charlesmack.github.io/bryce/index.html', description: 'Holographic projections', category: 'Media' },
+            { id: 'cameras', name: 'Camera Shop', emoji: '🎥', path: 'https://charlesmack.github.io/camera-shop/index.html', description: 'Camera equipment', category: 'Tools' },
+            { id: 'dev-editor', name: 'Dev Editor', emoji: '💻', path: 'https://charlesmack.github.io/OnePagerMiniOS/appdrops/dev-editor/index.html', description: 'Code editing', category: 'Development' },
+            { id: 'dj-drop', name: 'DJ Drop', emoji: '🎧', path: 'https://charlesmack.github.io/OnePagerMiniOS/appdrops/dj-drop/index.html', description: 'Music mixing', category: 'Media' },
+            { id: 'encyclopedia', name: 'Encyclopedia', emoji: '📚', path: 'https://charlesmack.github.io/OnePagerMiniOS/appdrops/encyclopedia/index.html', description: 'Knowledge base', category: 'Reference' },
+            { id: 'first-aid', name: 'First Aid', emoji: '🚑', path: 'https://charlesmack.github.io/OnePagerMiniOS/appdrops/firstaid/index.html', description: 'Medical assistance', category: 'Health' },
+            { id: 'planner', name: 'Planner', emoji: '📅', path: 'https://charlesmack.github.io/OnePagerMiniOS/appdrops/planner-lite/index.html', description: 'Task planning', category: 'Productivity' },
+            { id: 'scratchpad', name: 'Scratchpad', emoji: '📝', path: 'https://charlesmack.github.io/OnePagerMiniOS/appdrops/scratchpad/index.html', description: 'Quick notes', category: 'Productivity' },
+            { id: 'media-world', name: 'Media World', emoji: '🗺️', path: 'https://charlesmack.github.io/3d-media-player-world/index.html', description: '3D media player', category: 'Media' },
+            { id: 'performance', name: 'Performance Monitor', emoji: '📊', path: 'https://charlesmack.github.io/OnePagerMiniOS/appdrops/performance-monitor/index.html', description: 'System stats', category: 'Tools' },
+            { id: 'charles5-m', name: 'Charles5 M', emoji: '🎬', path: 'https://charlesmack.github.io/OnePagerMiniOS/appdrops/charles5-m/index.html', description: 'Media production', category: 'Media' },
+            { id: 'hearsay', name: 'Hearsay', emoji: '🗣️', path: 'https://charlesmack.github.io/OnePagerMiniOS/appdrops/hearsay/index.html', description: 'Communication', category: 'Communication' },
+            { id: 'strobe', name: 'Strobe', emoji: '✨', path: 'https://charlesmack.github.io/OnePagerMiniOS/appdrops/strobe/index.html', description: 'Light control', category: 'Tools' }
+        ];
+
+        // Pipeline system state
+        let openApps = [];
+        let openScenes = [];
+        let activeFlows = [];
+        let zIndexCounter = 510;
+
+        // Three.js setup
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.Fog(0x1e3c72, 50, 200);
+        
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        
+        const pipelineContainer = document.getElementById('pipelineContainer');
+        renderer.setSize(pipelineContainer.clientWidth, pipelineContainer.clientHeight);
+        renderer.setClearColor(0x1e3c72, 0);
+        renderer.shadowMap.enabled = true;
+        pipelineContainer.appendChild(renderer.domElement);
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+        scene.add(ambientLight);
+        
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(50, 50, 50);
+        directionalLight.castShadow = true;
+        scene.add(directionalLight);
+
+        // Pipeline stages
+        const stages = [
+            { name: "User Request", position: [-30, 0, 0], color: 0x4682B4 },
+            { name: "Client", position: [-15, 0, 0], color: 0x6A5ACD },
+            { name: "Agent/Worker", position: [0, 0, 0], color: 0x3CB371 },
+            { name: "Automation", position: [15, 0, 0], color: 0xFFD700 },
+            { name: "Scene", position: [30, 0, 0], color: 0xFF4500 }
+        ];
+
+        let stationGroups = [];
+
+        // Camera controls
+        let autoRotate = true;
+        let cameraAngleX = 0;
+        let cameraAngleY = 0;
+        const cameraDistance = 60;
+        camera.position.set(0, 20, cameraDistance);
+
+        // Create pipeline
+        function createPipeline() {
+            const curve = new THREE.CatmullRomCurve3([
+                new THREE.Vector3(-35, -2, 0),
+                ...stages.map(s => new THREE.Vector3(...s.position)),
+                new THREE.Vector3(35, 2, 0)
+            ]);
+
+            const tubeGeometry = new THREE.TubeGeometry(curve, 64, 1.5, 8, false);
+            const tubeMaterial = new THREE.MeshPhongMaterial({
+                color: 0x708090,
+                transparent: true,
+                opacity: 0.7
+            });
+            
+            const tube = new THREE.Mesh(tubeGeometry, tubeMaterial);
+            scene.add(tube);
+
+            stages.forEach((stage, index) => {
+                const group = createStation(stage, index);
+                scene.add(group);
+                stationGroups.push(group);
+            });
+        }
+
+        function createStation(stage, index) {
+            const group = new THREE.Group();
+            
+            const baseGeometry = new THREE.CylinderGeometry(4, 4, 1, 16);
+            const baseMaterial = new THREE.MeshPhongMaterial({ color: stage.color });
+            const base = new THREE.Mesh(baseGeometry, baseMaterial);
+            base.position.set(...stage.position);
+            base.position.y = -3;
+            group.add(base);
+
+            const unitGeometry = new THREE.BoxGeometry(3, 4, 3);
+            const unitMaterial = new THREE.MeshPhongMaterial({ color: stage.color, opacity: 0.8, transparent: true });
+            const unit = new THREE.Mesh(unitGeometry, unitMaterial);
+            unit.position.set(...stage.position);
+            unit.position.y = 1;
+            group.add(unit);
+
+            const indicatorGeometry = new THREE.SphereGeometry(0.5, 16, 16);
+            const indicatorMaterial = new THREE.MeshBasicMaterial({ color: 0x333333, opacity: 0.5, transparent: true });
+            const indicator = new THREE.Mesh(indicatorGeometry, indicatorMaterial);
+            indicator.position.set(...stage.position);
+            indicator.position.y = 4;
+            group.add(indicator);
+
+            group.userData = { stage, indicator, unit, base };
+            return group;
+        }
+
+        // Scene management functions
+        function createSceneViewer(app) {
+            // Check if a scene for this app already exists
+            const existingScene = openScenes.find(s => s.appId === app.id);
+            if (existingScene) {
+                focusScene(existingScene.id);
+                return existingScene;
+            }
+
+            const sceneId = `scene-${app.id}-${Date.now()}`;
+            const sceneViewer = document.createElement('div');
+            sceneViewer.className = 'scene-viewer';
+            sceneViewer.id = sceneId;
+            sceneViewer.style.left = `${40 + (openScenes.length * 20)}px`;
+            sceneViewer.style.top = `${40 + (openScenes.length * 20)}px`;
+            sceneViewer.innerHTML = `
+                <div class="scene-header" id="header-${sceneId}">
+                    <div class="scene-title" id="title-${sceneId}">
+                        ${app.emoji} ${app.name}
+                    </div>
+                    <div class="scene-controls">
+                        <button class="scene-btn" id="newTab-${sceneId}" title="Open in New Tab">↗</button>
+                        <button class="scene-btn" id="maximize-${sceneId}" title="Maximize">□</button>
+                        <button class="scene-btn minimize" id="minimize-${sceneId}" title="Minimize">–</button>
+                        <button class="scene-btn close" id="close-${sceneId}" title="Close">✕</button>
+                    </div>
+                </div>
+                <div class="scene-content" id="content-${sceneId}">
+                    <iframe id="frame-${sceneId}" src="${app.path}" allow="fullscreen; clipboard-read; clipboard-write; autoplay; encrypted-media" sandbox="allow-forms allow-scripts allow-same-origin allow-popups allow-modals allow-storage-access-by-user-activation allow-top-navigation-by-user-activation"></iframe>
+                </div>
+            `;
+            document.querySelector('.container').appendChild(sceneViewer);
+
+            const sceneObj = {
+                id: sceneId,
+                appId: app.id,
+                name: app.name,
+                emoji: app.emoji,
+                path: app.path,
+                isMinimized: false,
+                isMaximized: false,
+                element: sceneViewer
+            };
+            openScenes.push(sceneObj);
+            sceneViewer.classList.add('active');
+
+            // Setup drag functionality
+            setupSceneViewerDrag(sceneId);
+
+            // Event listeners for scene controls
+            document.getElementById(`newTab-${sceneId}`).addEventListener('click', () => {
+                window.open(app.path, '_blank');
+            });
+
+            document.getElementById(`maximize-${sceneId}`).addEventListener('click', () => {
+                toggleMaximize(sceneId);
+            });
+
+            document.getElementById(`minimize-${sceneId}`).addEventListener('click', () => {
+                minimizeScene(sceneId);
+            });
+
+            document.getElementById(`close-${sceneId}`).addEventListener('click', () => {
+                closeScene(sceneId);
+            });
+
+            // Bring to front on click
+            sceneViewer.addEventListener('mousedown', () => {
+                focusScene(sceneId);
+            });
+
+            updateOpenScenes();
+            updateSceneBadge();
+            return sceneObj;
+        }
+
+        function toggleMaximize(sceneId) {
+            const scene = openScenes.find(s => s.id === sceneId);
+            if (scene) {
+                scene.isMaximized = !scene.isMaximized;
+                const maxBtn = document.getElementById(`maximize-${sceneId}`);
+                if (scene.isMaximized) {
+                    scene.element.classList.add('maximized');
+                    maxBtn.innerHTML = '❐';
+                    maxBtn.title = 'Restore';
+                } else {
+                    scene.element.classList.remove('maximized');
+                    maxBtn.innerHTML = '□';
+                    maxBtn.title = 'Maximize';
+                }
+                focusScene(sceneId);
+                if (navigator.vibrate) navigator.vibrate(50);
+            }
+        }
+
+        function focusScene(sceneId) {
+            const scene = openScenes.find(s => s.id === sceneId);
+            if (!scene || scene.isMinimized) {
+                if (scene && scene.isMinimized) {
+                    scene.isMinimized = false;
+                    scene.element.classList.remove('minimized');
+                    scene.element.classList.add('active');
+                } else {
+                    return;
+                }
+            }
+
+            zIndexCounter++;
+            scene.element.style.zIndex = zIndexCounter;
+            scene.element.classList.add('active');
+            updateOpenScenes();
+        }
+
+        function minimizeScene(sceneId) {
+            const scene = openScenes.find(s => s.id === sceneId);
+            if (scene) {
+                scene.isMinimized = true;
+                scene.element.classList.remove('active');
+                scene.element.classList.add('minimized');
+                updateOpenScenes();
+                if (navigator.vibrate) navigator.vibrate(50);
+            }
+        }
+
+        function closeScene(sceneId) {
+            const scene = openScenes.find(s => s.id === sceneId);
+            if (scene) {
+                scene.element.remove();
+                openScenes = openScenes.filter(s => s.id !== sceneId);
+                updateOpenScenes();
+                updateSceneBadge();
+                if (navigator.vibrate) navigator.vibrate(50);
+            }
+        }
+
+        function updateOpenScenes() {
+            const openScenesList = document.getElementById('openScenesList');
+            openScenesList.innerHTML = '';
+
+            openScenes.forEach(scene => {
+                const sceneEl = document.createElement('div');
+                sceneEl.className = 'open-scene';
+                sceneEl.innerHTML = `
+                    <div class="open-scene-info">
+                        <span>${scene.emoji}</span>
+                        <span>${scene.name}${scene.isMinimized ? ' (Minimized)' : ''}</span>
+                    </div>
+                    <div class="open-scene-controls">
+                        <button class="scene-control focus" onclick="focusScene('${scene.id}')" title="Focus">👁</button>
+                        <button class="scene-control minimize" onclick="minimizeScene('${scene.id}')" title="Minimize">–</button>
+                        <button class="scene-control close" onclick="closeScene('${scene.id}')" title="Close">✕</button>
+                    </div>
+                `;
+                openScenesList.appendChild(sceneEl);
+            });
+
+            updateSceneApps();
+        }
+
+        function updateSceneBadge() {
+            const badge = document.getElementById('sceneBadge');
+            badge.textContent = openScenes.length;
+            badge.style.display = openScenes.length > 0 ? 'flex' : 'none';
+        }
+
+        // App management functions
+        function launchApp(app) {
+            // Check if the app is already open
+            const existingApp = openApps.find(openApp => openApp.id === app.id);
+            if (!existingApp) {
+                openApps.push({
+                    id: app.id,
+                    name: app.name,
+                    emoji: app.emoji,
+                    path: app.path,
+                    description: app.description,
+                    timestamp: Date.now()
+                });
+            }
+
+            // Check if a flow for this app is already active
+            const existingFlow = activeFlows.find(flow => flow.app.id === app.id);
+            if (!existingFlow) {
+                startFlow(app);
+            } else {
+                // If already flowing, focus existing scene if open
+                focusApp(app.id);
+            }
+            updateFlowMenu();
+            updateOpenApps();
+        }
+
+        function startFlow(app) {
+            const flowId = `flow-${Date.now()}`;
+            const packetGeometry = new THREE.SphereGeometry(0.8, 16, 16);
+            const packetMaterial = new THREE.MeshPhongMaterial({ 
+                color: 0x00CED1,
+                emissive: 0x006666
+            });
+            const packet = new THREE.Mesh(packetGeometry, packetMaterial);
+            packet.position.set(-35, 0, 0);
+            scene.add(packet);
+
+            const flow = {
+                id: flowId,
+                app: app,
+                stage: 0,
+                packet: packet,
+                startTime: Date.now()
+            };
+            activeFlows.push(flow);
+            
+            document.getElementById('pipelineStatus').textContent = `FLOWING (${activeFlows.length})`;
+        }
+
+        function animateFlows() {
+            activeFlows = activeFlows.filter(flow => {
+                const duration = 1500;
+                const elapsed = Date.now() - flow.startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                
+                if (flow.stage < stages.length - 1) {
+                    const currentPos = stages[flow.stage].position;
+                    const nextPos = stages[flow.stage + 1].position;
+                    
+                    flow.packet.position.x = currentPos[0] + (nextPos[0] - currentPos[0]) * progress;
+                    flow.packet.position.y = Math.sin(progress * Math.PI) * 2;
+                }
+                
+                const currentStation = stationGroups[flow.stage];
+                if (currentStation) {
+                    currentStation.userData.indicator.material.color.setHex(0x00FF00);
+                    currentStation.userData.indicator.material.opacity = 1;
+                    currentStation.userData.unit.rotation.y += 0.005;
+                }
+                
+                updateFlowStageIndicator(flow.stage, flow.app.id);
+                
+                if (progress < 1) {
+                    return true;
+                } else {
+                    flow.stage++;
+                    if (flow.stage < stages.length) {
+                        flow.startTime = Date.now();
+                        return true;
+                    } else {
+                        presentAtScene(flow.app);
+                        scene.remove(flow.packet);
+                        return false;
+                    }
+                }
+            });
+
+            if (activeFlows.length === 0) {
+                stationGroups.forEach(group => {
+                    group.userData.indicator.material.color.setHex(0x333333);
+                    group.userData.indicator.material.opacity = 0.5;
+                    group.userData.unit.rotation.y = 0;
+                });
+                document.getElementById('pipelineStatus').textContent = 'READY';
+            } else {
+                document.getElementById('pipelineStatus').textContent = `FLOWING (${activeFlows.length})`;
+            }
+        }
+
+        function presentAtScene(app) {
+            createSceneViewer(app);
+            updateOpenApps();
+        }
+
+        function updateFlowStageIndicator(stage, appId) {
+            const stages = ['userRequestApps', 'clientApps', 'agentApps', 'automationApps', 'sceneApps'];
+            const stageElements = stages.map(id => document.getElementById(id));
+            
+            const currentStageEl = stageElements[stage];
+            if (currentStageEl) {
+                const appEl = currentStageEl.querySelector(`[data-app-id="${appId}"]`);
+                if (appEl) {
+                    appEl.classList.add('flowing');
+                }
+            }
+        }
+
+        function updateFlowMenu() {
+            const userRequestEl = document.getElementById('userRequestApps');
+            const clientEl = document.getElementById('clientApps');
+            const agentEl = document.getElementById('agentApps');
+            const automationEl = document.getElementById('automationApps');
+            const sceneEl = document.getElementById('sceneApps');
+            
+            [userRequestEl, clientEl, agentEl, automationEl, sceneEl].forEach(el => el.innerHTML = '');
+            
+            APPDROPS.forEach(app => {
+                const appElement = document.createElement('div');
+                appElement.className = 'stage-app';
+                appElement.dataset.appId = app.id;
+                appElement.innerHTML = `${app.emoji} ${app.name}`;
+                appElement.addEventListener('click', () => launchApp(app));
+                
+                userRequestEl.appendChild(appElement.cloneNode(true));
+                clientEl.appendChild(appElement.cloneNode(true));
+                agentEl.appendChild(appElement.cloneNode(true));
+                automationEl.appendChild(appElement.cloneNode(true));
+                sceneEl.appendChild(appElement.cloneNode(true));
+            });
+            
+            document.querySelectorAll('.stage-app').forEach(el => {
+                el.removeEventListener('click', launchAppHandler);
+                el.addEventListener('click', launchAppHandler);
+            });
+        }
+
+        function launchAppHandler(e) {
+            const appId = e.target.dataset.appId;
+            const app = APPDROPS.find(a => a.id === appId);
+            if (app) launchApp(app);
+        }
+
+        function updateSceneApps() {
+            const sceneEl = document.getElementById('sceneApps');
+            sceneEl.innerHTML = '';
+            
+            openScenes.forEach(scene => {
+                const appElement = document.createElement('div');
+                appElement.className = `stage-app${scene.isMinimized ? '' : ' selected'}`;
+                appElement.innerHTML = `${scene.emoji} ${scene.name}${scene.isMinimized ? ' (Minimized)' : ' (Active)'}`;
+                appElement.addEventListener('click', () => focusScene(scene.id));
+                sceneEl.appendChild(appElement);
+            });
+        }
+
+        function updateOpenApps() {
+            const openAppsList = document.getElementById('openScenesList');
+            openAppsList.innerHTML = '';
+            
+            openApps.forEach(app => {
+                const appEl = document.createElement('div');
+                appEl.className = 'open-scene';
+                appEl.innerHTML = `
+                    <div class="open-scene-info">
+                        <span>${app.emoji}</span>
+                        <span>${app.name}</span>
+                    </div>
+                    <div class="open-scene-controls">
+                        <button class="scene-control focus" onclick="focusApp('${app.id}')" title="Focus">👁</button>
+                        <button class="scene-control" onclick="openInNewTab('${app.id}')" title="New Tab">↗</button>
+                        <button class="scene-control close" onclick="closeApp('${app.id}')" title="Close">✕</button>
+                    </div>
+                `;
+                openAppsList.appendChild(appEl);
+            });
+        }
+
+        function focusApp(appId) {
+            const app = openApps.find(a => a.id === appId);
+            if (app) {
+                const scene = openScenes.find(s => s.appId === appId && !s.isMinimized);
+                if (scene) {
+                    focusScene(scene.id);
+                } else {
+                    createSceneViewer(app);
+                }
+            }
+        }
+
+        function openInNewTab(appId) {
+            const app = openApps.find(a => a.id === appId);
+            if (app) {
+                window.open(app.path, '_blank');
+            }
+        }
+
+        function closeApp(appId) {
+            openApps = openApps.filter(app => app.id !== appId);
+            openScenes = openScenes.filter(scene => scene.appId !== appId);
+            document.querySelectorAll(`.scene-viewer[id^="scene-${appId}"]`).forEach(el => el.remove());
+            updateOpenScenes();
+            updateOpenApps();
+            updateSceneBadge();
+        }
+
+        function populateAppSelector() {
+            const grid = document.getElementById('selectorGrid');
+            grid.innerHTML = '';
+            
+            APPDROPS.forEach(app => {
+                const appDiv = document.createElement('div');
+                appDiv.className = 'selector-app';
+                appDiv.innerHTML = `
+                    <div class="selector-app-icon">${app.emoji}</div>
+                    <div class="selector-app-name">${app.name}</div>
+                `;
+                appDiv.addEventListener('click', () => {
+                    launchApp(app);
+                    document.getElementById('appSelector').classList.remove('show');
+                });
+                grid.appendChild(appDiv);
+            });
+        }
+
+        // Touch controls for 3D pipeline
+        function setupControls() {
+            const canvas = renderer.domElement;
+            let mouseDown = false;
+            let mouseX = 0;
+            let mouseY = 0;
+
+            canvas.addEventListener('mousedown', (e) => {
+                mouseDown = true;
+                mouseX = e.clientX;
+                mouseY = e.clientY;
+            });
+
+            canvas.addEventListener('mousemove', (e) => {
+                if (!mouseDown) return;
+                
+                const deltaX = e.clientX - mouseX;
+                const deltaY = e.clientY - mouseY;
+                
+                cameraAngleX -= deltaX * 0.01;
+                cameraAngleY += deltaY * 0.01;
+                cameraAngleY = Math.max(-Math.PI/3, Math.min(Math.PI/3, cameraAngleY));
+                
+                mouseX = e.clientX;
+                mouseY = e.clientY;
+            });
+
+            canvas.addEventListener('mouseup', () => {
+                mouseDown = false;
+            });
+
+            canvas.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                const scale = e.deltaY > 0 ? 1.1 : 0.9;
+                camera.position.multiplyScalar(scale);
+            }, { passive: false });
+
+            canvas.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                if (e.touches.length === 1) {
+                    mouseDown = true;
+                    mouseX = e.touches[0].clientX;
+                    mouseY = e.touches[0].clientY;
+                }
+            }, { passive: false });
+
+            canvas.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                if (e.touches.length === 1 && mouseDown) {
+                    const deltaX = e.touches[0].clientX - mouseX;
+                    const deltaY = e.touches[0].clientY - mouseY;
+                    
+                    cameraAngleX -= deltaX * 0.01;
+                    cameraAngleY += deltaY * 0.01;
+                    cameraAngleY = Math.max(-Math.PI/3, Math.min(Math.PI/3, cameraAngleY));
+                    
+                    mouseX = e.touches[0].clientX;
+                    mouseY = e.touches[0].clientY;
+                } else if (e.touches.length === 2) {
+                    const touch1 = e.touches[0];
+                    const touch2 = e.touches[1];
+                    const distance = Math.sqrt(
+                        Math.pow(touch2.clientX - touch1.clientX, 2) +
+                        Math.pow(touch2.clientY - touch1.clientY, 2)
+                    );
+                    
+                    if (e.target.lastDistance) {
+                        const scale = distance / e.target.lastDistance;
+                        camera.position.multiplyScalar(1 / scale);
+                    }
+                    e.target.lastDistance = distance;
+                }
+            }, { passive: false });
+
+            canvas.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                mouseDown = false;
+                e.target.lastDistance = null;
+            }, { passive: false });
+        }
+
+        // Scene viewer drag functionality
+        function setupSceneViewerDrag(sceneId) {
+            const sceneViewer = document.getElementById(sceneId);
+            const sceneHeader = document.getElementById(`header-${sceneId}`);
+            
+            let isDragging = false;
+            let dragOffsetX = 0;
+            let dragOffsetY = 0;
+            
+            sceneHeader.addEventListener('mousedown', (e) => {
+                isDragging = true;
+                dragOffsetX = e.clientX - sceneViewer.offsetLeft;
+                dragOffsetY = e.clientY - sceneViewer.offsetTop;
+                focusScene(sceneId);
+            });
+            
+            document.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+                sceneViewer.style.left = (e.clientX - dragOffsetX) + 'px';
+                sceneViewer.style.top = (e.clientY - dragOffsetY) + 'px';
+            });
+            
+            document.addEventListener('mouseup', () => {
+                isDragging = false;
+            });
+
+            sceneHeader.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                isDragging = true;
+                dragOffsetX = e.touches[0].clientX - sceneViewer.offsetLeft;
+                dragOffsetY = e.touches[0].clientY - sceneViewer.offsetTop;
+                focusScene(sceneId);
+            }, { passive: false });
+            
+            document.addEventListener('touchmove', (e) => {
+                if (!isDragging) return;
+                e.preventDefault();
+                sceneViewer.style.left = (e.touches[0].clientX - dragOffsetX) + 'px';
+                sceneViewer.style.top = (e.touches[0].clientY - dragOffsetY) + 'px';
+            }, { passive: false });
+            
+            document.addEventListener('touchend', () => {
+                isDragging = false;
+            });
+        }
+
+        // Event listeners
+        function setupEventListeners() {
+            function updateTime() {
+                const now = new Date();
+                document.getElementById('time').textContent = 
+                    now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            }
+            setInterval(updateTime, 1000);
+            updateTime();
+
+            document.getElementById('homeBtn').addEventListener('click', () => {
+                cameraAngleX = 0;
+                cameraAngleY = 0;
+                camera.position.set(0, 20, cameraDistance);
+                if (navigator.vibrate) navigator.vibrate(50);
+            });
+
+            document.getElementById('appsBtn').addEventListener('click', () => {
+                populateAppSelector();
+                document.getElementById('appSelector').classList.add('show');
+                if (navigator.vibrate) navigator.vibrate(50);
+            });
+
+            document.getElementById('flowBtn').addEventListener('click', () => {
+                document.getElementById('flowMenu').classList.toggle('active');
+                document.getElementById('flowBtn').classList.toggle('active');
+                if (navigator.vibrate) navigator.vibrate(50);
+            });
+
+            document.getElementById('sceneBtn').addEventListener('click', () => {
+                document.getElementById('flowMenu').classList.add('active');
+                document.getElementById('flowBtn').classList.add('active');
+                if (navigator.vibrate) navigator.vibrate(50);
+            });
+
+            document.getElementById('closeFlowMenu').addEventListener('click', () => {
+                document.getElementById('flowMenu').classList.remove('active');
+                document.getElementById('flowBtn').classList.remove('active');
+            });
+
+            document.getElementById('closeSelector').addEventListener('click', () => {
+                document.getElementById('appSelector').classList.remove('show');
+            });
+
+            document.getElementById('searchBar').addEventListener('input', (e) => {
+                const searchTerm = e.target.value.toLowerCase();
+                const apps = document.querySelectorAll('.selector-app');
+                
+                apps.forEach(app => {
+                    const name = app.querySelector('.selector-app-name').textContent.toLowerCase();
+                    app.style.display = name.includes(searchTerm) ? 'block' : 'none';
+                });
+            });
+        }
+
+        // Animation loop
+        function renderLoop() {
+            requestAnimationFrame(renderLoop);
+            
+            if (activeFlows.length > 0) {
+                animateFlows();
+            }
+            
+            if (autoRotate && activeFlows.length === 0) {
+                cameraAngleX += 0.005;
+            }
+            
+            camera.position.x = Math.cos(cameraAngleX) * Math.cos(cameraAngleY) * cameraDistance;
+            camera.position.y = Math.sin(cameraAngleY) * cameraDistance + 10;
+            camera.position.z = Math.sin(cameraAngleX) * Math.cos(cameraAngleY) * cameraDistance;
+            camera.lookAt(0, 0, 0);
+            
+            renderer.render(scene, camera);
+        }
+
+        // Window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = pipelineContainer.clientWidth / pipelineContainer.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(pipelineContainer.clientWidth, pipelineContainer.clientHeight);
+        });
+
+        // Global functions for onclick handlers
+        window.focusApp = focusApp;
+        window.openInNewTab = openInNewTab;
+        window.closeApp = closeApp;
+        window.focusScene = focusScene;
+        window.minimizeScene = minimizeScene;
+        window.closeScene = closeScene;
+        window.toggleMaximize = toggleMaximize;
+
+        // Initialize
+        createPipeline();
+        setupControls();
+        setupEventListeners();
+        updateFlowMenu();
+        renderLoop();
+    </script>
+</body>
+</html>
