@@ -611,6 +611,7 @@
     <script>
         // AppDrops database
         const APPDROPS = [
+            { id: 'mobile', name: 'Mobile', emoji: '📱', path: 'https://charlesmack.github.io/mobile/index.html', description: 'P.O.P.S. Professional Production Mobile', category: 'Tools' },
             { id: 'atlas', name: 'Atlas', emoji: '🌍', path: 'https://charlesmack.github.io/OnePagerMiniOS/appdrops/atlas/index.html', description: 'Global mapping tool', category: 'Tools' },
             { id: 'aurora', name: 'Aurora', emoji: '🌌', path: 'https://charlesmack.github.io/OnePagerMiniOS/appdrops/aurora/index.html', description: 'Visual effects suite', category: 'Media' },
             { id: 'bryce', name: 'Bryce Holograms', emoji: '😇', path: 'https://charlesmack.github.io/bryce/index.html', description: 'Holographic projections', category: 'Media' },
@@ -944,7 +945,7 @@
 
         function animateFlows() {
             activeFlows = activeFlows.filter(flow => {
-                const duration = 1500;
+                const duration = 22;
                 const elapsed = Date.now() - flow.startTime;
                 const progress = Math.min(elapsed / duration, 1);
                 
