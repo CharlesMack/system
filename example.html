@@ -1,0 +1,1093 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0a160b">
+    <title>P.O.P.S. 3D Pipeline Interface Example</title>
+    <meta name="description" content="3D Pipeline system for launching and managing AppDrops">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        :root {
+            --bg: radial-gradient(1200px 800px at 50% -10%, #1a1a1a 0%, #0e0e0e 40%, #0a0a0a 100%);
+            --accent: #00ff7f;
+            --accent-light: #33ff99;
+            --accent-dark: #00cc66;
+            --accent-glow: rgba(0, 255, 127, 0.3);
+            --glass: rgba(255, 255, 255, 0.08);
+            --safe-top: env(safe-area-inset-top, 0px);
+            --safe-bottom: env(safe-area-inset-bottom, 24px);
+            --safe-left: env(safe-area-inset-left, 0px);
+            --safe-right: env(safe-area-inset-right, 0px);
+        }
+
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        html, body {
+            height: 100dvh;
+            height: 100vh;
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: #fff;
+            overflow: hidden;
+            touch-action: manipulation;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .container {
+            position: relative;
+            width: 100vw;
+            height: 100dvh;
+            height: 100vh;
+            padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+        }
+
+        .status-bar {
+            position: absolute;
+            top: var(--safe-top);
+            left: var(--safe-left);
+            right: var(--safe-right);
+            height: 32px;
+            padding: 0 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: linear-gradient(135deg, rgba(0, 0, 0, 0.8), var(--accent-glow));
+            border-bottom: 1px solid var(--accent-glow);
+            backdrop-filter: blur(20px);
+            z-index: 1000;
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        .time {
+            color: var(--accent);
+            text-shadow: 0 0 10px var(--accent-glow);
+        }
+
+        .pipeline-status {
+            padding: 3px 8px;
+            border-radius: 12px;
+            border: 1px solid var(--accent);
+            background: linear-gradient(135deg, var(--accent-glow), rgba(255, 255, 255, 0.05));
+            color: var(--accent);
+            font-size: 10px;
+        }
+
+        .pipeline-container {
+            position: absolute;
+            top: 32px;
+            left: 0;
+            right: 0;
+            bottom: 80px;
+            background: transparent;
+        }
+
+        .info-panel {
+            position: absolute;
+            top: 50px;
+            left: 16px;
+            background: rgba(0, 0, 0, 0.85);
+            color: white;
+            padding: 16px;
+            border-radius: 12px;
+            border: 1px solid var(--accent);
+            box-shadow: 0 0 20px var(--accent-glow);
+            max-width: 280px;
+            z-index: 100;
+            backdrop-filter: blur(20px);
+            transition: all 0.3s ease;
+        }
+
+        .info-panel.minimized {
+            transform: translateX(-85%);
+            opacity: 0.6;
+        }
+
+        .info-panel h3 {
+            margin-top: 0;
+            color: var(--accent);
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .minimize-btn {
+            background: none;
+            border: 1px solid var(--accent);
+            color: var(--accent);
+            border-radius: 4px;
+            width: 24px;
+            height: 24px;
+            cursor: pointer;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .app-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 8px;
+            margin-top: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .app-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            background: linear-gradient(135deg, var(--glass), var(--accent-glow));
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .app-icon:hover, .app-icon.active {
+            background: linear-gradient(135deg, var(--accent-glow), rgba(255, 255, 255, 0.1));
+            border-color: var(--accent);
+            transform: scale(1.1);
+            box-shadow: 0 4px 12px var(--accent-glow);
+        }
+
+        .app-icon.launching {
+            animation: pulse 0.5s ease-in-out;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+        }
+
+        .controls {
+            position: absolute;
+            bottom: calc(80px + 16px);
+            right: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            z-index: 100;
+        }
+
+        .control-btn {
+            background: linear-gradient(135deg, rgba(0, 0, 0, 0.8), var(--accent-glow));
+            border: 1px solid var(--accent);
+            color: var(--accent);
+            padding: 12px;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(20px);
+            min-width: 44px;
+            min-height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .control-btn:hover, .control-btn:active {
+            background: linear-gradient(135deg, var(--accent-light), var(--accent-glow));
+            color: #000;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px var(--accent-glow);
+        }
+
+        .dock {
+            position: absolute;
+            left: var(--safe-left);
+            right: var(--safe-right);
+            bottom: var(--safe-bottom);
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: space-around;
+            padding: 12px 16px;
+            background: linear-gradient(135deg, rgba(0, 0, 0, 0.85), var(--accent-glow));
+            backdrop-filter: blur(25px);
+            border-top: 1px solid var(--accent-glow);
+            z-index: 1000;
+            gap: 16px;
+        }
+
+        .dock-btn {
+            width: 56px;
+            height: 56px;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            cursor: pointer;
+            background: linear-gradient(135deg, var(--accent-light), var(--accent-dark));
+            box-shadow: 0 4px 12px var(--accent-glow);
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .dock-btn:hover, .dock-btn:active {
+            transform: translateY(-3px) scale(1.05);
+            box-shadow: 0 8px 20px var(--accent-glow);
+        }
+
+        .badge {
+            position: absolute;
+            top: -2px;
+            right: -2px;
+            background: #ff073a;
+            color: #fff;
+            font-size: 10px;
+            font-weight: 700;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+        }
+
+        .stage-tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--accent);
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 200;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            max-width: 200px;
+        }
+
+        .stage-tooltip.show {
+            opacity: 1;
+        }
+
+        .app-launcher {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.95);
+            border: 2px solid var(--accent);
+            border-radius: 20px;
+            padding: 20px;
+            max-width: 90vw;
+            max-height: 80vh;
+            z-index: 1500;
+            backdrop-filter: blur(30px);
+            display: none;
+            flex-direction: column;
+        }
+
+        .app-launcher.show {
+            display: flex;
+        }
+
+        .launcher-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .launcher-title {
+            color: var(--accent);
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .close-launcher {
+            background: rgba(255, 7, 58, 0.8);
+            color: #fff;
+            border: none;
+            border-radius: 50%;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .launcher-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 16px;
+            overflow-y: auto;
+            max-height: 60vh;
+        }
+
+        .launcher-app {
+            background: linear-gradient(135deg, var(--glass), var(--accent-glow));
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 16px;
+            padding: 16px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .launcher-app:hover {
+            background: linear-gradient(135deg, var(--accent-glow), rgba(255, 255, 255, 0.1));
+            border-color: var(--accent);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px var(--accent-glow);
+        }
+
+        .launcher-app-icon {
+            font-size: 36px;
+            margin-bottom: 8px;
+        }
+
+        .launcher-app-name {
+            font-size: 12px;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .search-bar {
+            margin-bottom: 20px;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid var(--accent);
+            background: rgba(0, 0, 0, 0.5);
+            color: #fff;
+            font-size: 14px;
+            width: 100%;
+        }
+
+        @media (max-width: 768px) {
+            .info-panel {
+                max-width: 240px;
+                padding: 12px;
+            }
+            
+            .app-grid {
+                grid-template-columns: repeat(4, 1fr);
+            }
+            
+            .launcher-grid {
+                grid-template-columns: repeat(3, 1fr);
+                gap: 12px;
+            }
+            
+            .controls {
+                bottom: calc(80px + 12px);
+                right: 12px;
+            }
+        }
+
+        @media (orientation: landscape) and (max-height: 600px) {
+            .info-panel {
+                top: 40px;
+                max-width: 200px;
+                padding: 8px;
+            }
+            
+            .dock {
+                height: 60px;
+                padding: 8px 12px;
+            }
+            
+            .dock-btn {
+                width: 48px;
+                height: 48px;
+                font-size: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="status-bar">
+            <div class="time" id="time">11:04 PM</div>
+            <div class="pipeline-status" id="pipelineStatus">ACTIVE</div>
+        </div>
+
+        <div class="pipeline-container" id="pipelineContainer"></div>
+
+        <div class="info-panel" id="infoPanel">
+            <h3>
+                Pipeline Control
+                <button class="minimize-btn" id="minimizeBtn">–</button>
+            </h3>
+            <p id="stageInfo">Navigate through the 3D pipeline to launch AppDrops. Touch stations to access applications.</p>
+            <p style="font-size: 12px; color: #AAA;">Drag to orbit • Pinch to zoom</p>
+            
+            <div class="app-grid" id="quickLaunch">
+                <!-- Quick launch apps will be populated here -->
+            </div>
+        </div>
+
+        <div class="controls">
+            <button class="control-btn" id="resetView" title="Reset Camera">🎯</button>
+            <button class="control-btn" id="toggleFlow" title="Start Flow">▶️</button>
+            <button class="control-btn" id="toggleRotate" title="Auto Rotate">🔄</button>
+        </div>
+
+        <div class="stage-tooltip" id="tooltip"></div>
+
+        <div class="app-launcher" id="appLauncher">
+            <div class="launcher-header">
+                <div class="launcher-title">Launch AppDrop</div>
+                <button class="close-launcher" id="closeLauncher">✕</button>
+            </div>
+            <input type="text" class="search-bar" id="searchBar" placeholder="Search AppDrops...">
+            <div class="launcher-grid" id="launcherGrid"></div>
+        </div>
+
+        <div class="dock">
+            <div class="dock-btn" id="homeBtn" title="Pipeline Home">🏗️</div>
+            <div class="dock-btn" id="appsBtn" title="AppDrops">📱</div>
+            <div class="dock-btn" id="flowBtn" title="Start Flow">🚀</div>
+            <div class="dock-btn" id="settingsBtn" title="Settings">⚙️
+                <span class="badge" id="syncBadge" style="display: none;">0</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // AppDrops data
+        const APPDROPS = [
+            { id: 'atlas', name: 'Atlas', emoji: '🌍', path: 'https://charlesmack.github.io/OnePagerMiniOS/appdrops/atlas/index.html', description: 'Global mapping tool', category: 'Tools' },
+            { id: 'aurora', name: 'Aurora', emoji: '🌌', path: 'https://charlesmack.github.io/OnePagerMiniOS/appdrops/aurora/index.html', description: 'Visual effects suite', category: 'Media' },
+            { id: 'bryce', name: 'Bryce Holograms', emoji: '😇', path: 'https://charlesmack.github.io/bryce/index.html', description: 'Holographic projections', category: 'Media' },
+            { id: 'cameras', name: 'Camera Shop', emoji: '🎥', path: 'https://charlesmack.github.io/camera-shop/index.html', description: 'Camera equipment', category: 'Tools' },
+            { id: 'dev-editor', name: 'Dev Editor', emoji: '💻', path: 'https://charlesmack.github.io/OnePagerMiniOS/appdrops/dev-editor/index.html', description: 'Code editing', category: 'Development' },
+            { id: 'dj-drop', name: 'DJ Drop', emoji: '🎧', path: 'https://charlesmack.github.io/OnePagerMiniOS/appdrops/dj-drop/index.html', description: 'Music mixing', category: 'Media' },
+            { id: 'encyclopedia', name: 'Encyclopedia', emoji: '📚', path: 'https://charlesmack.github.io/OnePagerMiniOS/appdrops/encyclopedia/index.html', description: 'Knowledge base', category: 'Reference' },
+            { id: 'first-aid', name: 'First Aid', emoji: '🚑', path: 'https://charlesmack.github.io/OnePagerMiniOS/appdrops/firstaid/index.html', description: 'Medical assistance', category: 'Health' },
+            { id: 'planner', name: 'Planner', emoji: '📅', path: 'https://charlesmack.github.io/OnePagerMiniOS/appdrops/planner-lite/index.html', description: 'Task planning', category: 'Productivity' },
+            { id: 'scratchpad', name: 'Scratchpad', emoji: '📝', path: 'https://charlesmack.github.io/OnePagerMiniOS/appdrops/scratchpad/index.html', description: 'Quick notes', category: 'Productivity' },
+            { id: 'media-world', name: 'Media World', emoji: '🗺️', path: 'https://charlesmack.github.io/3d-media-player-world/index.html', description: '3D media player', category: 'Media' },
+            { id: 'performance', name: 'Performance Monitor', emoji: '📊', path: 'https://charlesmack.github.io/OnePagerMiniOS/appdrops/performance-monitor/index.html', description: 'System stats', category: 'Tools' }
+        ];
+
+        // Three.js scene setup
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.Fog(0x1e3c72, 50, 200);
+        
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        
+        const pipelineContainer = document.getElementById('pipelineContainer');
+        renderer.setSize(pipelineContainer.clientWidth, pipelineContainer.clientHeight);
+        renderer.setClearColor(0x1e3c72, 0);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        pipelineContainer.appendChild(renderer.domElement);
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+        scene.add(ambientLight);
+        
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(50, 50, 50);
+        directionalLight.castShadow = true;
+        scene.add(directionalLight);
+        
+        const pointLight = new THREE.PointLight(0x4682B4, 0.5);
+        pointLight.position.set(0, 20, 0);
+        scene.add(pointLight);
+
+        // Pipeline stages
+        const stages = [
+            { name: "User Request", position: [-30, 0, 0], color: 0x4682B4, apps: ['scratchpad', 'planner'] },
+            { name: "Client", position: [-15, 0, 0], color: 0x6A5ACD, apps: ['dev-editor', 'atlas'] },
+            { name: "Agent/Worker", position: [0, 0, 0], color: 0x3CB371, apps: ['encyclopedia', 'performance'] },
+            { name: "Automation", position: [15, 0, 0], color: 0xFFD700, apps: ['aurora', 'media-world'] },
+            { name: "Scene", position: [30, 0, 0], color: 0xFF4500, apps: ['bryce', 'dj-drop'] }
+        ];
+
+        const stationGroups = [];
+        const dataPackets = [];
+        let currentStage = 0;
+        let isFlowActive = false;
+        let autoRotate = true;
+        let selectedStage = null;
+
+        // Camera controls
+        let mouseDown = false;
+        let mouseX = 0;
+        let mouseY = 0;
+        let cameraAngleX = 0;
+        let cameraAngleY = 0;
+        const cameraDistance = 60;
+
+        camera.position.set(0, 20, cameraDistance);
+        camera.lookAt(0, 0, 0);
+
+        // Create pipeline
+        function createPipeline() {
+            // Main tube
+            const curve = new THREE.CatmullRomCurve3([
+                new THREE.Vector3(-35, -2, 0),
+                ...stages.map(s => new THREE.Vector3(...s.position)),
+                new THREE.Vector3(35, 2, 0)
+            ]);
+
+            const tubeGeometry = new THREE.TubeGeometry(curve, 64, 1.5, 8, false);
+            const tubeMaterial = new THREE.MeshPhongMaterial({
+                color: 0x708090,
+                transparent: true,
+                opacity: 0.7,
+                shininess: 100
+            });
+            
+            const tube = new THREE.Mesh(tubeGeometry, tubeMaterial);
+            tube.receiveShadow = true;
+            scene.add(tube);
+
+            // Create stations
+            stages.forEach((stage, index) => {
+                const stationGroup = createStation(stage, index);
+                scene.add(stationGroup);
+                stationGroups.push(stationGroup);
+            });
+        }
+
+        function createStation(stage, index) {
+            const group = new THREE.Group();
+            
+            // Platform
+            const baseGeometry = new THREE.CylinderGeometry(4, 4, 1, 16);
+            const baseMaterial = new THREE.MeshPhongMaterial({ color: stage.color });
+            const base = new THREE.Mesh(baseGeometry, baseMaterial);
+            base.position.set(...stage.position);
+            base.position.y = -3;
+            base.castShadow = true;
+            base.userData = { stage: stage, type: 'station' };
+            group.add(base);
+
+            // Processing unit
+            const unitGeometry = new THREE.BoxGeometry(3, 4, 3);
+            const unitMaterial = new THREE.MeshPhongMaterial({ 
+                color: stage.color,
+                transparent: true,
+                opacity: 0.8 
+            });
+            const unit = new THREE.Mesh(unitGeometry, unitMaterial);
+            unit.position.set(...stage.position);
+            unit.position.y = 1;
+            unit.castShadow = true;
+            unit.userData = { stage: stage, type: 'station' };
+            group.add(unit);
+
+            // Status indicator
+            const indicatorGeometry = new THREE.SphereGeometry(0.5, 16, 16);
+            const indicatorMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0x333333,
+                transparent: true,
+                opacity: 0.5 
+            });
+            const indicator = new THREE.Mesh(indicatorGeometry, indicatorMaterial);
+            indicator.position.set(...stage.position);
+            indicator.position.y = 4;
+            indicator.userData = { stage: stage, type: 'indicator' };
+            group.add(indicator);
+
+            group.userData = { stage: stage, indicator: indicator, unit: unit, base: base };
+            return group;
+        }
+
+        // Raycasting for interaction
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        const tooltip = document.getElementById('tooltip');
+
+        function onPointerMove(event) {
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(scene.children, true);
+
+            tooltip.classList.remove('show');
+
+            for (let intersect of intersects) {
+                if (intersect.object.userData.stage) {
+                    const stage = intersect.object.userData.stage;
+                    tooltip.innerHTML = `<strong>${stage.name}</strong><br>${stage.apps.length} AppDrops available`;
+                    tooltip.style.left = event.clientX + 10 + 'px';
+                    tooltip.style.top = event.clientY - 40 + 'px';
+                    tooltip.classList.add('show');
+                    break;
+                }
+            }
+        }
+
+        function onPointerClick(event) {
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(scene.children, true);
+
+            for (let intersect of intersects) {
+                if (intersect.object.userData.stage) {
+                    const stage = intersect.object.userData.stage;
+                    selectStage(stage);
+                    break;
+                }
+            }
+        }
+
+        function selectStage(stage) {
+            selectedStage = stage;
+            
+            // Highlight the selected station
+            stationGroups.forEach(group => {
+                if (group.userData.stage === stage) {
+                    group.userData.indicator.material.color.setHex(0x00FF00);
+                    group.userData.indicator.material.opacity = 1;
+                    group.userData.unit.rotation.y += 0.1;
+                }
+            });
+
+            // Update info panel
+            document.getElementById('stageInfo').innerHTML = 
+                `<strong style="color: #FFD700;">${stage.name} Station</strong><br>Click AppDrop icons below to launch`;
+
+            // Update quick launch
+            updateQuickLaunch(stage);
+            
+            // Show app launcher
+            showAppLauncher(stage);
+        }
+
+        function updateQuickLaunch(stage) {
+            const quickLaunch = document.getElementById('quickLaunch');
+            quickLaunch.innerHTML = '';
+
+            stage.apps.forEach(appId => {
+                const app = APPDROPS.find(a => a.id === appId);
+                if (app) {
+                    const icon = document.createElement('div');
+                    icon.className = 'app-icon';
+                    icon.innerHTML = app.emoji;
+                    icon.title = `${app.name} - ${app.description}`;
+                    icon.addEventListener('click', () => launchApp(app));
+                    quickLaunch.appendChild(icon);
+                }
+            });
+        }
+
+        function showAppLauncher(stage) {
+            const launcher = document.getElementById('appLauncher');
+            const grid = document.getElementById('launcherGrid');
+            
+            grid.innerHTML = '';
+            
+            // Show apps for this stage
+            stage.apps.forEach(appId => {
+                const app = APPDROPS.find(a => a.id === appId);
+                if (app) {
+                    const appDiv = document.createElement('div');
+                    appDiv.className = 'launcher-app';
+                    appDiv.innerHTML = `
+                        <div class="launcher-app-icon">${app.emoji}</div>
+                        <div class="launcher-app-name">${app.name}</div>
+                    `;
+                    appDiv.addEventListener('click', () => {
+                        launchApp(app);
+                        launcher.classList.remove('show');
+                    });
+                    grid.appendChild(appDiv);
+                }
+            });
+
+            launcher.classList.add('show');
+        }
+
+        function launchApp(app) {
+            // Add launching animation
+            const icons = document.querySelectorAll(`.app-icon[title*="${app.name}"]`);
+            icons.forEach(icon => {
+                icon.classList.add('launching');
+                setTimeout(() => icon.classList.remove('launching'), 500);
+            });
+
+            // Launch the app
+            window.open(app.path, '_blank');
+            
+            // Vibrate if supported
+            if (navigator.vibrate) navigator.vibrate(50);
+        }
+
+        // Touch and mouse controls
+        function setupControls() {
+            const canvas = renderer.domElement;
+
+            canvas.addEventListener('mousedown', (event) => {
+                mouseDown = true;
+                mouseX = event.clientX;
+                mouseY = event.clientY;
+            });
+
+            canvas.addEventListener('mousemove', (event) => {
+                onPointerMove(event);
+                
+                if (!mouseDown) return;
+                
+                const deltaX = event.clientX - mouseX;
+                const deltaY = event.clientY - mouseY;
+                
+                cameraAngleX -= deltaX * 0.01;
+                cameraAngleY += deltaY * 0.01;
+                cameraAngleY = Math.max(-Math.PI/3, Math.min(Math.PI/3, cameraAngleY));
+                
+                mouseX = event.clientX;
+                mouseY = event.clientY;
+            });
+
+            canvas.addEventListener('mouseup', () => {
+                mouseDown = false;
+            });
+
+            canvas.addEventListener('click', onPointerClick);
+
+            canvas.addEventListener('wheel', (event) => {
+                event.preventDefault();
+                const scale = event.deltaY > 0 ? 1.1 : 0.9;
+                camera.position.multiplyScalar(scale);
+            }, { passive: false });
+
+            // Touch controls
+            let touches = {};
+            let lastTouchDistance = 0;
+
+            canvas.addEventListener('touchstart', (event) => {
+                event.preventDefault();
+                
+                if (event.touches.length === 1) {
+                    mouseDown = true;
+                    mouseX = event.touches[0].clientX;
+                    mouseY = event.touches[0].clientY;
+                } else if (event.touches.length === 2) {
+                    mouseDown = false;
+                    const dx = event.touches[0].clientX - event.touches[1].clientX;
+                    const dy = event.touches[0].clientY - event.touches[1].clientY;
+                    lastTouchDistance = Math.sqrt(dx * dx + dy * dy);
+                }
+            }, { passive: false });
+
+            canvas.addEventListener('touchmove', (event) => {
+                event.preventDefault();
+                
+                if (event.touches.length === 1 && mouseDown) {
+                    const deltaX = event.touches[0].clientX - mouseX;
+                    const deltaY = event.touches[0].clientY - mouseY;
+                    
+                    cameraAngleX -= deltaX * 0.01;
+                    cameraAngleY += deltaY * 0.01;
+                    cameraAngleY = Math.max(-Math.PI/3, Math.min(Math.PI/3, cameraAngleY));
+                    
+                    mouseX = event.touches[0].clientX;
+                    mouseY = event.touches[0].clientY;
+                } else if (event.touches.length === 2) {
+                    const dx = event.touches[0].clientX - event.touches[1].clientX;
+                    const dy = event.touches[0].clientY - event.touches[1].clientY;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (lastTouchDistance > 0) {
+                        const scale = distance / lastTouchDistance;
+                        camera.position.multiplyScalar(1 / scale);
+                    }
+                    
+                    lastTouchDistance = distance;
+                }
+                
+                // Update hover effects for touch
+                onPointerMove(event.touches[0]);
+            }, { passive: false });
+
+            canvas.addEventListener('touchend', (event) => {
+                event.preventDefault();
+                
+                if (event.touches.length === 0) {
+                    if (mouseDown && event.changedTouches.length === 1) {
+                        // This was a tap, trigger click
+                        onPointerClick(event.changedTouches[0]);
+                    }
+                    mouseDown = false;
+                    lastTouchDistance = 0;
+                } else if (event.touches.length === 1) {
+                    mouseDown = true;
+                    mouseX = event.touches[0].clientX;
+                    mouseY = event.touches[0].clientY;
+                    lastTouchDistance = 0;
+                }
+            }, { passive: false });
+        }
+
+        // Animation functions
+        function startFlow() {
+            if (isFlowActive) return;
+            
+            isFlowActive = true;
+            currentStage = 0;
+            
+            // Create data packet
+            const packetGeometry = new THREE.SphereGeometry(0.8, 16, 16);
+            const packetMaterial = new THREE.MeshPhongMaterial({ 
+                color: 0x00CED1,
+                emissive: 0x006666,
+                shininess: 100
+            });
+            const packet = new THREE.Mesh(packetGeometry, packetMaterial);
+            packet.position.set(-35, 0, 0);
+            packet.castShadow = true;
+            scene.add(packet);
+            
+            dataPackets.push(packet);
+            animatePacket(packet);
+            
+            document.getElementById('pipelineStatus').textContent = 'FLOWING';
+        }
+
+        function animatePacket(packet) {
+            const startTime = Date.now();
+            const duration = 2000;
+            
+            function animate() {
+                if (!isFlowActive || currentStage >= stages.length) {
+                    if (currentStage >= stages.length) {
+                        document.getElementById('stageInfo').innerHTML = 
+                            '<strong style="color: #00CED1;">Flow Complete!</strong><br>Data processed through all stations';
+                        document.getElementById('pipelineStatus').textContent = 'COMPLETE';
+                    }
+                    return;
+                }
+                
+                const elapsed = Date.now() - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                
+                // Animate packet movement
+                if (currentStage < stages.length - 1) {
+                    const currentPos = stages[currentStage].position;
+                    const nextPos = stages[currentStage + 1].position;
+                    
+                    packet.position.x = currentPos[0] + (nextPos[0] - currentPos[0]) * progress;
+                    packet.position.y = Math.sin(progress * Math.PI) * 2;
+                }
+                
+                // Activate current station
+                const currentStation = stationGroups[currentStage];
+                if (currentStation) {
+                    currentStation.userData.indicator.material.color.setHex(0x00FF00);
+                    currentStation.userData.indicator.material.opacity = 1;
+                    currentStation.userData.unit.rotation.y += 0.1;
+                }
+                
+                if (progress < 1) {
+                    requestAnimationFrame(animate);
+                } else {
+                    currentStage++;
+                    if (currentStage < stages.length) {
+                        setTimeout(animate, 500);
+                    } else {
+                        setTimeout(() => {
+                            scene.remove(packet);
+                            dataPackets.splice(dataPackets.indexOf(packet), 1);
+                            resetFlow();
+                        }, 1000);
+                    }
+                }
+            }
+            
+            animate();
+        }
+
+        function resetFlow() {
+            isFlowActive = false;
+            currentStage = 0;
+            
+            stationGroups.forEach(group => {
+                group.userData.indicator.material.color.setHex(0x333333);
+                group.userData.indicator.material.opacity = 0.5;
+                group.userData.unit.rotation.y = 0;
+            });
+            
+            dataPackets.forEach(packet => scene.remove(packet));
+            dataPackets.length = 0;
+            
+            document.getElementById('pipelineStatus').textContent = 'READY';
+            document.getElementById('stageInfo').innerHTML = 
+                'Navigate through the 3D pipeline to launch AppDrops. Touch stations to access applications.';
+        }
+
+        // UI Event Handlers
+        function updateTime() {
+            const now = new Date();
+            document.getElementById('time').textContent = 
+                now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+        setInterval(updateTime, 1000);
+        updateTime();
+
+        // Control buttons
+        document.getElementById('minimizeBtn').addEventListener('click', () => {
+            document.getElementById('infoPanel').classList.toggle('minimized');
+        });
+
+        document.getElementById('resetView').addEventListener('click', () => {
+            cameraAngleX = 0;
+            cameraAngleY = 0;
+            camera.position.set(0, 20, cameraDistance);
+            camera.lookAt(0, 0, 0);
+        });
+
+        document.getElementById('toggleFlow').addEventListener('click', () => {
+            if (isFlowActive) {
+                resetFlow();
+                document.getElementById('toggleFlow').innerHTML = '▶️';
+            } else {
+                startFlow();
+                document.getElementById('toggleFlow').innerHTML = '⏹️';
+            }
+        });
+
+        document.getElementById('toggleRotate').addEventListener('click', () => {
+            autoRotate = !autoRotate;
+            document.getElementById('toggleRotate').style.opacity = autoRotate ? '1' : '0.5';
+        });
+
+        // Dock buttons
+        document.getElementById('homeBtn').addEventListener('click', () => {
+            resetFlow();
+            cameraAngleX = 0;
+            cameraAngleY = 0;
+            camera.position.set(0, 20, cameraDistance);
+            if (navigator.vibrate) navigator.vibrate(50);
+        });
+
+        document.getElementById('appsBtn').addEventListener('click', () => {
+            const launcher = document.getElementById('appLauncher');
+            const grid = document.getElementById('launcherGrid');
+            
+            grid.innerHTML = '';
+            APPDROPS.forEach(app => {
+                const appDiv = document.createElement('div');
+                appDiv.className = 'launcher-app';
+                appDiv.innerHTML = `
+                    <div class="launcher-app-icon">${app.emoji}</div>
+                    <div class="launcher-app-name">${app.name}</div>
+                `;
+                appDiv.addEventListener('click', () => {
+                    launchApp(app);
+                    launcher.classList.remove('show');
+                });
+                grid.appendChild(appDiv);
+            });
+            
+            launcher.classList.add('show');
+            if (navigator.vibrate) navigator.vibrate(50);
+        });
+
+        document.getElementById('flowBtn').addEventListener('click', () => {
+            startFlow();
+            if (navigator.vibrate) navigator.vibrate(50);
+        });
+
+        document.getElementById('settingsBtn').addEventListener('click', () => {
+            const settingsApp = APPDROPS.find(app => app.id === 'performance');
+            if (settingsApp) {
+                launchApp(settingsApp);
+            }
+            if (navigator.vibrate) navigator.vibrate(50);
+        });
+
+        document.getElementById('closeLauncher').addEventListener('click', () => {
+            document.getElementById('appLauncher').classList.remove('show');
+        });
+
+        // Search functionality
+        document.getElementById('searchBar').addEventListener('input', (e) => {
+            const searchTerm = e.target.value.toLowerCase();
+            const apps = document.querySelectorAll('.launcher-app');
+            
+            apps.forEach(app => {
+                const name = app.querySelector('.launcher-app-name').textContent.toLowerCase();
+                app.style.display = name.includes(searchTerm) ? 'block' : 'none';
+            });
+        });
+
+        // Animation loop
+        function renderLoop() {
+            requestAnimationFrame(renderLoop);
+            
+            // Update camera
+            if (autoRotate && !mouseDown) {
+                cameraAngleX += 0.005;
+            }
+            
+            camera.position.x = Math.cos(cameraAngleX) * Math.cos(cameraAngleY) * cameraDistance;
+            camera.position.y = Math.sin(cameraAngleY) * cameraDistance + 10;
+            camera.position.z = Math.sin(cameraAngleX) * Math.cos(cameraAngleY) * cameraDistance;
+            camera.lookAt(0, 0, 0);
+            
+            // Animate pipeline glow
+            pointLight.intensity = 0.5 + Math.sin(Date.now() * 0.003) * 0.2;
+            
+            renderer.render(scene, camera);
+        }
+
+        // Handle resize
+        window.addEventListener('resize', () => {
+            const container = document.getElementById('pipelineContainer');
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        });
+
+        // Prevent default behaviors for better touch experience
+        document.addEventListener('touchmove', (e) => {
+            if (e.target === renderer.domElement) {
+                e.preventDefault();
+            }
+        }, { passive: false });
+
+        // Initialize
+        createPipeline();
+        setupControls();
+        renderLoop();
+
+        // Add some initial quick launch apps
+        const defaultApps = ['scratchpad', 'atlas', 'encyclopedia', 'performance'];
+        const quickLaunch = document.getElementById('quickLaunch');
+        defaultApps.forEach(appId => {
+            const app = APPDROPS.find(a => a.id === appId);
+            if (app) {
+                const icon = document.createElement('div');
+                icon.className = 'app-icon';
+                icon.innerHTML = app.emoji;
+                icon.title = `${app.name} - ${app.description}`;
+                icon.addEventListener('click', () => launchApp(app));
+                quickLaunch.appendChild(icon);
+            }
+        });
+    </script>
+</body>
+</html>
